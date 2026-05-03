@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="WARRIOR" />
+  <meta name="description" content="7-Day Warrior Workout Checklist" />
+  <title>WARRIOR — 7-Day Program</title>
+
+  <!--
+    WARRIOR — 7-Day Workout Checklist PWA
+    ========================================
+    Features:
+    - Auto-detects today and shows current workout
+    - LocalStorage persistence per day
+    - Progress tracking + streak counter
+    - Burst animations on checkbox
+    - Missed workout alerts
+    - Browser notification reminders
+    - Installable as PWA via inline Service Worker
+    - 100% offline after first load
+    - Zero external dependencies
+  -->
+
+  <style>
+    /* ================================================================
+       DESIGN TOKENS
+       ================================================================ */
+    :root {
+      --bg-base:         #080810;
+      --bg-card:         #10101c;
+      --bg-hover:        #181828;
+      --bg-subtle:       #0c0c16;
+      --accent:          #f97316;
+      --accent-dim:      #7c3910;
+      --accent-glow:     rgba(249,115,22,0.15);
+      --accent-2:        #fbbf24;
+      --green:           #22c55e;
+      --green-glow:      rgba(34,197,94,0.15);
+      --red:             #ef4444;
+      --text-1:          #f0efe8;
+      --text-2:          #7e7d90;
+      --text-3:          #3a394e;
+      --border:          rgba(255,255,255,0.055);
+      --border-accent:   rgba(249,115,22,0.3);
+      --radius-sm:       8px;
+      --radius-md:       14px;
+      --radius-lg:       20px;
+      --shadow-card:     0 8px 32px rgba(0,0,0,0.6);
+      --spring:          cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* ================================================================
+       RESET
+       ================================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      -webkit-tap-highlight-color: transparent;
+      -webkit-text-size-adjust: 100%;
+    }
+    body {
+      background: var(--bg-base);
+      color: var(--text-1);
+      font-family: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100dvh;
+      overscroll-behavior: none;
+      background-image:
+        radial-gradient(ellipse 90% 50% at 50% -5%, rgba(249,115,22,0.06) 0%, transparent 60%);
+    }
+
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 2px; }
+
+    /* ================================================================
+       FONTS (Google Fonts via @import — fallback to system if offline)
+       ================================================================ */
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Barlow:wght@400;500;600&display=swap');
+
+    /* ================================================================
+       LAYOUT
+       ================================================================ */
+    #app {
+      max-width: 430px;
+      margin: 0 auto;
+      padding-bottom: 88px;
+    }
+
+    /* ================================================================
+       HEADER
+       ================================================================ */
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(8,8,16,0.94);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 18px 10px;
+    }
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .logo {
+      font-family: 'Rajdhani', Impact, sans-serif;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 5px;
+      line-height: 1;
+      color: var(--text-1);
+    }
+    .logo span { color: var(--accent); text-shadow: 0 0 16px rgba(249,115,22,0.7); }
+
+    .streak-pill {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(249,115,22,0.1);
+      border: 1px solid var(--border-accent);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+      transition: box-shadow 0.3s ease;
+    }
+    .streak-pill.active { box-shadow: 0 0 18px rgba(249,115,22,0.22); }
+    .streak-pill #streak-num { font-family: 'Rajdhani', sans-serif; font-size: 15px; }
+
+    /* Day nav pills */
+    .day-nav {
+      display: flex;
+      gap: 7px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 2px 0 4px;
+    }
+    .day-nav::-webkit-scrollbar { display: none; }
+
+    .day-pill {
+      flex-shrink: 0;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1.5px solid var(--text-3);
+      background: transparent;
+      color: var(--text-2);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      position: relative;
+      transition: all 0.25s var(--spring);
+      user-select: none;
+    }
+    .day-pill .pn { font-size: 11px; line-height: 1; }
+    .day-pill .pd { width: 4px; height: 4px; border-radius: 50%; background: transparent; transition: all 0.25s ease; }
+
+    .day-pill.done   { border-color: var(--green); color: var(--green); }
+    .day-pill.done .pd { background: var(--green); }
+
+    .day-pill.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-glow);
+      box-shadow: 0 0 18px rgba(249,115,22,0.28);
+      transform: scale(1.06);
+    }
+    .day-pill.active .pd { background: var(--accent); }
+
+    /* "today" indicator dot on top-right corner */
+    .day-pill.is-today::after {
+      content: '';
+      position: absolute;
+      top: -3px; right: -1px;
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      background: var(--accent-2);
+      border: 2px solid var(--bg-base);
+      box-shadow: 0 0 8px var(--accent-2);
+    }
+
+    /* ================================================================
+       CONTENT AREA
+       ================================================================ */
+    .content { padding: 18px 14px 0; }
+
+    /* ================================================================
+       ALERTS
+       ================================================================ */
+    .alert {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 11px 14px;
+      border-radius: var(--radius-md);
+      margin-bottom: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.5;
+      animation: alertSlide 0.4s var(--spring);
+    }
+    @keyframes alertSlide {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .alert-warn { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.28); color: #fca5a5; }
+    .alert-info { background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.28); color: #fdba74; }
+    .alert-ok   { background: rgba(34,197,94,0.1);  border: 1px solid rgba(34,197,94,0.28);  color: #86efac; }
+    .alert em   { font-style: normal; font-weight: 700; display: block; margin-bottom: 1px; }
+    .alert-ico  { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+
+    /* ================================================================
+       DAY CARD
+       ================================================================ */
+    .day-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-card);
+      overflow: hidden;
+      animation: cardIn 0.4s var(--spring);
+    }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(16px) scale(0.98); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .card-top {
+      padding: 16px 18px 14px;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    /* Accent top line */
+    .card-top::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--accent) 0%, var(--accent-2) 60%, transparent 100%);
+    }
+
+    .day-tag {
+      font-size: 10.5px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .day-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      color: var(--text-1);
+      margin-bottom: 14px;
+      line-height: 1.1;
+    }
+
+    /* Progress bar */
+    .prog-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .prog-track {
+      flex: 1;
+      height: 4px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .prog-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 8px rgba(249,115,22,0.5);
+      transition: width 0.55s var(--spring);
+    }
+    .prog-text {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--text-2);
+      letter-spacing: 0.3px;
+      min-width: 30px;
+      text-align: right;
+    }
+
+    /* Exercise list */
+    .ex-list { padding: 4px 0; }
+
+    .ex-item {
+      display: flex;
+      align-items: center;
+      padding: 13px 18px;
+      gap: 14px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      position: relative;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .ex-item + .ex-item::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 52px;
+      right: 18px;
+      height: 1px;
+      background: var(--border);
+    }
+    .ex-item:active { background: rgba(255,255,255,0.03); }
+
+    /* Custom checkbox */
+    .cb {
+      width: 26px; height: 26px;
+      border-radius: 7px;
+      border: 2px solid var(--text-3);
+      background: transparent;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+    .cb::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      opacity: 0;
+      transform: scale(0);
+      transition: opacity 0.3s ease, transform 0.3s var(--spring);
+    }
+    .cb-check {
+      position: relative;
+      z-index: 1;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 900;
+      opacity: 0;
+      transform: scale(0) rotate(-20deg);
+      transition: opacity 0.25s ease, transform 0.3s var(--spring);
+      line-height: 1;
+    }
+    .ex-item.checked .cb { border-color: var(--accent); box-shadow: 0 0 12px rgba(249,115,22,0.3); }
+    .ex-item.checked .cb::after { opacity: 1; transform: scale(1); }
+    .ex-item.checked .cb-check { opacity: 1; transform: scale(1) rotate(0); }
+
+    .ex-info { flex: 1; min-width: 0; }
+    .ex-name {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-1);
+      line-height: 1.3;
+      transition: color 0.2s ease;
+    }
+    .ex-reps {
+      font-size: 11.5px;
+      color: var(--text-2);
+      margin-top: 2px;
+      font-weight: 400;
+      letter-spacing: 0.2px;
+      transition: color 0.2s ease;
+    }
+    .ex-item.checked .ex-name { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--text-3); }
+    .ex-item.checked .ex-reps { color: var(--text-3); }
+
+    /* ================================================================
+       COMPLETE BANNER
+       ================================================================ */
+    .done-banner {
+      text-align: center;
+      padding: 22px 20px;
+      margin-top: 14px;
+      background: linear-gradient(135deg, rgba(34,197,94,0.1), rgba(34,197,94,0.04));
+      border: 1px solid rgba(34,197,94,0.25);
+      border-radius: var(--radius-lg);
+      animation: popIn 0.5s var(--spring);
+    }
+    @keyframes popIn {
+      from { opacity: 0; transform: scale(0.85); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .done-icon { font-size: 38px; margin-bottom: 8px; }
+    .done-title { font-family: 'Rajdhani', sans-serif; font-size: 18px; letter-spacing: 2.5px; font-weight: 700; color: var(--green); }
+    .done-sub { font-size: 12.5px; color: #86efac; margin-top: 4px; }
+
+    /* ================================================================
+       REST DAY
+       ================================================================ */
+    .rest-block {
+      text-align: center;
+      padding: 50px 28px 44px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      animation: cardIn 0.4s var(--spring);
+    }
+    .rest-emoji { font-size: 60px; margin-bottom: 14px; line-height: 1; }
+    .rest-title { font-family: 'Rajdhani', sans-serif; font-size: 26px; letter-spacing: 3px; font-weight: 700; color: var(--text-1); margin-bottom: 10px; }
+    .rest-body { font-size: 14px; color: var(--text-2); line-height: 1.65; max-width: 250px; margin: 0 auto; }
+
+    /* ================================================================
+       WEEK STATS
+       ================================================================ */
+    .week-stats {
+      display: flex;
+      align-items: center;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      margin-top: 14px;
+      padding: 12px 6px;
+    }
+    .stat {
+      flex: 1;
+      text-align: center;
+    }
+    .stat-val {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .stat-lbl {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-3);
+      margin-top: 3px;
+    }
+    .stat-div { width: 1px; height: 34px; background: var(--border); }
+
+    /* ================================================================
+       DATE LABEL
+       ================================================================ */
+    .date-label {
+      font-size: 11.5px;
+      color: var(--text-3);
+      letter-spacing: 0.5px;
+      padding-bottom: 14px;
+    }
+
+    /* ================================================================
+       BOTTOM BAR
+       ================================================================ */
+    .bottom-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 100;
+      max-width: 430px;
+      margin: 0 auto;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(8,8,16,0.96);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-top: 1px solid var(--border);
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .today-btn {
+      flex: 1;
+      height: 48px;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #f97316, #ea6700);
+      color: #fff;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(249,115,22,0.35);
+      transition: opacity 0.18s, transform 0.15s;
+    }
+    .today-btn:active { opacity: 0.82; transform: scale(0.97); }
+    .icon-btn {
+      width: 48px; height: 48px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--bg-card);
+      color: var(--text-2);
+      font-size: 19px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: var(--spring) 0.25s;
+      flex-shrink: 0;
+    }
+    .icon-btn:active { background: var(--bg-hover); }
+    .icon-btn.on { color: var(--accent); border-color: var(--border-accent); background: var(--accent-glow); }
+
+    /* ================================================================
+       INSTALL BANNER
+       ================================================================ */
+    #install-wrap {
+      padding: 10px 14px 0;
+      display: none;
+    }
+    .install-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(251,191,36,0.06);
+      border: 1px solid rgba(251,191,36,0.18);
+      border-radius: var(--radius-md);
+      padding: 11px 14px;
+    }
+    .install-text { flex: 1; font-size: 12.5px; color: var(--accent-2); line-height: 1.4; }
+    .install-text strong { display: block; font-weight: 600; }
+    .install-cta { background: var(--accent-2); color: #111; border: none; border-radius: 8px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+    .install-x { background: none; border: none; color: var(--text-3); font-size: 17px; cursor: pointer; padding: 0 2px; }
+
+    /* ================================================================
+       PARTICLES
+       ================================================================ */
+    .burst-wrap { position: fixed; pointer-events: none; z-index: 9999; }
+    .burst-dot {
+      position: absolute;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      animation: burstGo 0.55s ease-out forwards;
+    }
+    @keyframes burstGo {
+      0%   { transform: translate(0,0) scale(1); opacity: 1; }
+      100% { transform: translate(var(--tx),var(--ty)) scale(0); opacity: 0; }
+    }
+
+    /* ================================================================
+       TOAST
+       ================================================================ */
+    #toast {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(20,20,32,0.97);
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      padding: 9px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-1);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+      opacity: 0;
+      transition: all 0.3s var(--spring);
+      z-index: 200;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===== HEADER ===== -->
+  <header class="header">
+    <div class="header-top">
+      <div class="logo">WAR<span>RIOR</span></div>
+      <div class="streak-pill" id="streak-pill">
+        🔥 <span id="streak-num">0</span> day streak
+      </div>
+    </div>
+    <nav class="day-nav" id="day-nav" aria-label="Day selector"></nav>
+  </header>
+
+  <!-- ===== INSTALL BANNER ===== -->
+  <div id="install-wrap">
+    <div class="install-bar">
+      <div class="install-text">
+        <strong>📲 Add to Home Screen</strong>Install for full offline access
+      </div>
+      <button class="install-cta" id="install-btn">Install</button>
+      <button class="install-x" id="dismiss-install" aria-label="Dismiss">✕</button>
+    </div>
+  </div>
+
+  <!-- ===== MAIN ===== -->
+  <main class="content" id="main"></main>
+
+</div>
+
+<!-- ===== BOTTOM BAR ===== -->
+<div class="bottom-bar">
+  <button class="today-btn" onclick="goToday()">⚡ TODAY</button>
+  <button class="icon-btn" id="notif-btn" onclick="toggleNotifs()" title="Toggle reminders">🔔</button>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div id="toast"></div>
+
+<!-- ================================================================
+     JAVASCRIPT
+     ================================================================ -->
+<script>
+/* ----------------------------------------------------------------
+   1. WORKOUT DATA
+---------------------------------------------------------------- */
+const DAYS = [
+  {
+    label:"MON", title:"UPPER BODY STRENGTH",
+    exercises:[
+      {name:"Push-ups",        reps:"4 × 12–20 reps"},
+      {name:"Pull-ups",        reps:"4 × max reps"},
+      {name:"Incline push-ups",reps:"3 × 12 reps"},
+      {name:"Plank",           reps:"3 × 45–60 sec hold"},
+      {name:"Farmer carry",    reps:"3 × 30–40 sec"},
+    ]
+  },
+  {
+    label:"TUE", title:"LEGS + EXPLOSIVE",
+    exercises:[
+      {name:"Squats",      reps:"4 × 12–15 reps"},
+      {name:"Lunges",      reps:"3 × 10 each leg"},
+      {name:"Jump squats", reps:"4 × 8 reps"},
+      {name:"Calf raises", reps:"3 × 20 reps"},
+      {name:"Sprints",     reps:"6 × 50–80 m"},
+    ]
+  },
+  {
+    label:"WED", title:"ENDURANCE + CONTROL",
+    exercises:[
+      {name:"Run",           reps:"3–5 km steady pace"},
+      {name:"Dead hang",     reps:"3 × max hold"},
+      {name:"Slow push-ups", reps:"3 × 10 reps (5 sec down)"},
+    ]
+  },
+  {
+    label:"THU", title:"UPPER BODY + COMBAT",
+    exercises:[
+      {name:"Decline push-ups",reps:"4 × 10–15 reps"},
+      {name:"Pull-ups",        reps:"4 × max reps"},
+      {name:"Pike push-ups",   reps:"3 × 8–10 reps"},
+      {name:"Shadow boxing",   reps:"5 × 2 min rounds"},
+      {name:"Burpees",         reps:"3 × 10 reps"},
+    ]
+  },
+  {
+    label:"FRI", title:"LEGS + ENDURANCE",
+    exercises:[
+      {name:"Squats",                reps:"4 × 15 reps"},
+      {name:"Step-ups",              reps:"3 × 12 each leg"},
+      {name:"Wall sit",              reps:"3 × 45 sec hold"},
+      {name:"Fast walk / incline",   reps:"20–30 min"},
+    ]
+  },
+  {
+    label:"SAT", title:"MIXED WARRIOR DAY",
+    exercises:[
+      {name:"Push-ups",      reps:"3 × max reps"},
+      {name:"Pull-ups",      reps:"3 × max reps"},
+      {name:"Sprints",       reps:"5 rounds"},
+      {name:"Shadow boxing", reps:"4 rounds"},
+      {name:"Leg raises",    reps:"3 × 12 reps"},
+    ]
+  },
+  {
+    label:"SUN", title:"REST DAY",
+    isRest: true
+  }
+];
+
+const DAY_NAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+
+/* ----------------------------------------------------------------
+   2. STATE HELPERS
+---------------------------------------------------------------- */
+/** JS getDay(): 0=Sun → map to index 6, 1=Mon→0, …, 6=Sat→5 */
+function todayIndex() {
+  const d = new Date().getDay();
+  return d === 0 ? 6 : d - 1;
+}
+
+const KEY = i => `warrior_day_${i}`;
+
+function loadState(i) {
+  const day = DAYS[i];
+  if (day.isRest) return [];
+  try {
+    const raw = localStorage.getItem(KEY(i));
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return new Array(day.exercises.length).fill(false);
+}
+
+function saveState(i, state) {
+  localStorage.setItem(KEY(i), JSON.stringify(state));
+}
+
+function isDone(i) {
+  const day = DAYS[i];
+  if (day.isRest) return true;
+  const st = loadState(i);
+  return st.length > 0 && st.every(Boolean);
+}
+
+function calcStreak() {
+  const t = todayIndex();
+  let s = 0;
+  for (let i = t; i >= 0; i--) {
+    if (isDone(i)) s++; else break;
+  }
+  return s;
+}
+
+/* ----------------------------------------------------------------
+   3. RENDER HELPERS
+---------------------------------------------------------------- */
+let active = todayIndex(); // currently viewed day
+
+function renderNav() {
+  const today = todayIndex();
+  const nav = document.getElementById('day-nav');
+  nav.innerHTML = '';
+  DAYS.forEach((day, i) => {
+    const btn = document.createElement('button');
+    btn.setAttribute('aria-label', `Day ${i+1}: ${day.label}`);
+    btn.className = 'day-pill' +
+      (i === active   ? ' active' : '') +
+      (isDone(i)      ? ' done'   : '') +
+      (i === today    ? ' is-today' : '');
+    btn.innerHTML = `<span class="pn">${day.label}</span><span class="pd"></span>`;
+    btn.onclick = () => switchDay(i);
+    nav.appendChild(btn);
+  });
+  // scroll active into view
+  const el = nav.children[active];
+  if (el) el.scrollIntoView({inline:'center', behavior:'smooth', block:'nearest'});
+}
+
+function renderStreak() {
+  const s = calcStreak();
+  const pill = document.getElementById('streak-pill');
+  const num  = document.getElementById('streak-num');
+  if (!num) return;
+  num.textContent = s;
+  pill.classList.toggle('active', s > 0);
+}
+
+function buildAlerts() {
+  const today = todayIndex();
+  const hour = new Date().getHours();
+  let html = '';
+
+  // Yesterday missed?
+  if (today > 0 && !isDone(today-1) && !DAYS[today-1].isRest) {
+    html += `<div class="alert alert-warn">
+      <span class="alert-ico">⚠️</span>
+      <div><em>Missed workout</em>You skipped ${DAY_NAMES[today-1]}'s session.</div>
+    </div>`;
+  }
+
+  // Today late + incomplete?
+  if (active === today && !isDone(today) && !DAYS[today].isRest && hour >= 18) {
+    html += `<div class="alert alert-info">
+      <span class="alert-ico">⏰</span>
+      <div><em>Don't skip today</em>Evening is here — you haven't trained yet.</div>
+    </div>`;
+  }
+
+  return html;
+}
+
+function buildStats() {
+  let done = 0, checks = 0, total = 0;
+  DAYS.forEach((day, i) => {
+    if (!day.isRest) {
+      if (isDone(i)) done++;
+      const st = loadState(i);
+      checks += st.filter(Boolean).length;
+      total  += day.exercises.length;
+    }
+  });
+  return `<div class="week-stats">
+    <div class="stat">
+      <div class="stat-val">${done}</div>
+      <div class="stat-lbl">Days Done</div>
+    </div>
+    <div class="stat-div"></div>
+    <div class="stat">
+      <div class="stat-val">${checks}</div>
+      <div class="stat-lbl">Sets Done</div>
+    </div>
+    <div class="stat-div"></div>
+    <div class="stat">
+      <div class="stat-val">${6 - done}</div>
+      <div class="stat-lbl">Remaining</div>
+    </div>
+  </div>`;
+}
+
+function renderMain() {
+  const main = document.getElementById('main');
+  const day = DAYS[active];
+  const today = todayIndex();
+  const dateStr = new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'short'});
+
+  let html = `<div class="date-label">${dateStr}</div>`;
+  html += buildAlerts();
+
+  /* ---- REST DAY ---- */
+  if (day.isRest) {
+    html += `<div class="rest-block">
+      <div class="rest-emoji">🧘</div>
+      <div class="rest-title">REST & RECOVER</div>
+      <div class="rest-body">Your muscles grow during rest, not just during training. Hydrate, stretch lightly, and sleep 7–9 hours. Come back stronger tomorrow, warrior.</div>
+    </div>`;
+    html += buildStats();
+    main.innerHTML = html;
+    return;
+  }
+
+  /* ---- WORKOUT DAY ---- */
+  const state = loadState(active);
+  const completed = state.filter(Boolean).length;
+  const total = day.exercises.length;
+  const pct = total ? Math.round(completed / total * 100) : 0;
+
+  html += `<div class="day-card">
+    <div class="card-top">
+      <div class="day-tag">Day ${active + 1} — ${day.label}</div>
+      <div class="day-title">${day.title}</div>
+      <div class="prog-row">
+        <div class="prog-track"><div class="prog-fill" id="prog-fill" style="width:${pct}%"></div></div>
+        <div class="prog-text" id="prog-text">${completed}/${total}</div>
+      </div>
+    </div>
+    <div class="ex-list" id="ex-list">`;
+
+  day.exercises.forEach((ex, i) => {
+    html += `<div class="ex-item${state[i]?' checked':''}" data-i="${i}" onclick="toggleEx(this,${i})">
+      <div class="cb"><span class="cb-check">✓</span></div>
+      <div class="ex-info">
+        <div class="ex-name">${ex.name}</div>
+        <div class="ex-reps">${ex.reps}</div>
+      </div>
+    </div>`;
+  });
+
+  html += `</div></div>`;
+
+  if (completed === total) {
+    html += doneBanner();
+  }
+
+  html += buildStats();
+  main.innerHTML = html;
+}
+
+function doneBanner() {
+  return `<div class="done-banner" id="done-banner">
+    <div class="done-icon">🏆</div>
+    <div class="done-title">WORKOUT COMPLETE</div>
+    <div class="done-sub">✅ Well done, warrior. Rest up and recover.</div>
+  </div>`;
+}
+
+/* ----------------------------------------------------------------
+   4. TOGGLE EXERCISE
+---------------------------------------------------------------- */
+function toggleEx(el, i) {
+  const state = loadState(active);
+  state[i] = !state[i];
+  saveState(active, state);
+
+  if (state[i]) {
+    el.classList.add('checked');
+    spawnParticles(el.querySelector('.cb'));
+  } else {
+    el.classList.remove('checked');
+  }
+
+  // Update progress inline (no full re-render)
+  const day = DAYS[active];
+  const done = state.filter(Boolean).length;
+  const total = day.exercises.length;
+  const pct = total ? Math.round(done/total*100) : 0;
+
+  const fill = document.getElementById('prog-fill');
+  const text = document.getElementById('prog-text');
+  if (fill) fill.style.width = pct + '%';
+  if (text) text.textContent = `${done}/${total}`;
+
+  if (done === total) {
+    // All done!
+    setTimeout(() => {
+      renderNav();
+      renderStreak();
+      // append done banner if not already there
+      if (!document.getElementById('done-banner')) {
+        const banner = document.createElement('div');
+        banner.innerHTML = doneBanner();
+        document.getElementById('main').appendChild(banner.firstElementChild);
+      }
+      scheduleNotif(true);
+    }, 350);
+  } else {
+    const banner = document.getElementById('done-banner');
+    if (banner) banner.remove();
+  }
+
+  renderNav();
+  renderStreak();
+}
+
+/* ----------------------------------------------------------------
+   5. PARTICLE BURST
+---------------------------------------------------------------- */
+function spawnParticles(origin) {
+  const r = origin.getBoundingClientRect();
+  const cx = r.left + r.width/2;
+  const cy = r.top  + r.height/2;
+  const colors = ['#f97316','#fbbf24','#fb923c','#fdba74','#ffffff'];
+  const wrap = document.createElement('div');
+  wrap.className = 'burst-wrap';
+  wrap.style.cssText = `left:${cx}px;top:${cy}px;`;
+  for (let i = 0; i < 10; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'burst-dot';
+    const angle = (i/10) * Math.PI * 2;
+    const dist  = 18 + Math.random() * 18;
+    dot.style.cssText = `
+      background:${colors[i%colors.length]};
+      --tx:${Math.cos(angle)*dist}px;
+      --ty:${Math.sin(angle)*dist}px;
+      left:-3px; top:-3px;
+      animation-delay:${i*0.018}s;
+    `;
+    wrap.appendChild(dot);
+  }
+  document.body.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 700);
+}
+
+/* ----------------------------------------------------------------
+   6. NAVIGATION
+---------------------------------------------------------------- */
+function switchDay(i) {
+  active = i;
+  renderNav();
+  renderMain();
+}
+
+function goToday() {
+  switchDay(todayIndex());
+}
+
+/* ----------------------------------------------------------------
+   7. NOTIFICATIONS
+---------------------------------------------------------------- */
+let notifEnabled = Notification.permission === 'granted';
+
+function updateNotifBtn() {
+  const btn = document.getElementById('notif-btn');
+  if (!btn) return;
+  notifEnabled = Notification.permission === 'granted';
+  btn.classList.toggle('on', notifEnabled);
+  btn.textContent = notifEnabled ? '🔔' : '🔕';
+  btn.title = notifEnabled ? 'Reminders ON' : 'Enable reminders';
+}
+
+function toggleNotifs() {
+  if (!('Notification' in window)) {
+    showToast('Notifications not supported in this browser');
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    showToast('🔔 Reminders already enabled!');
+    return;
+  }
+  Notification.requestPermission().then(p => {
+    notifEnabled = p === 'granted';
+    updateNotifBtn();
+    if (notifEnabled) {
+      showToast('🔔 Reminders enabled! We\'ll keep you on track.');
+      scheduleEveningCheck();
+    } else {
+      showToast('Notifications blocked. Check browser settings.');
+    }
+  });
+}
+
+function sendPushNotif(title, body) {
+  if (Notification.permission !== 'granted') return;
+  try {
+    new Notification(title, { body, icon: '' });
+  } catch(e) {}
+}
+
+function scheduleNotif(completed) {
+  if (completed) {
+    sendPushNotif('🏆 WARRIOR', 'Great job! You completed today\'s workout!');
+  }
+}
+
+function scheduleEveningCheck() {
+  // Check every 30 min if evening & not done
+  const checkFn = () => {
+    const h = new Date().getHours();
+    const t = todayIndex();
+    if (h >= 19 && h <= 22 && !isDone(t) && !DAYS[t].isRest) {
+      sendPushNotif('⚠️ WARRIOR REMINDER', 'You haven\'t completed today\'s workout yet!');
+    }
+  };
+  // Fire once after 2s (immediate feedback), then every 30min
+  setTimeout(checkFn, 2000);
+  setInterval(checkFn, 30 * 60 * 1000);
+}
+
+/* ----------------------------------------------------------------
+   8. TOAST
+---------------------------------------------------------------- */
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+/* ----------------------------------------------------------------
+   9. PWA — Inline Service Worker registration
+---------------------------------------------------------------- */
+if ('serviceWorker' in navigator) {
+  // Build SW blob inline
+  const swCode = `
+    const CACHE = 'warrior-v1';
+    const ASSETS = [self.location.href.replace(/\\/sw\\.js$/, '') || '/'];
+
+    self.addEventListener('install', e => {
+      e.waitUntil(
+        caches.open(CACHE).then(c => c.addAll(ASSETS))
+      );
+      self.skipWaiting();
+    });
+
+    self.addEventListener('activate', e => {
+      e.waitUntil(
+        caches.keys().then(keys =>
+          Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+        )
+      );
+      self.clients.claim();
+    });
+
+    self.addEventListener('fetch', e => {
+      e.respondWith(
+        caches.match(e.request).then(r => r || fetch(e.request).catch(() => r))
+      );
+    });
+  `;
+  const blob = new Blob([swCode], {type: 'application/javascript'});
+  const swUrl = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swUrl).catch(() => {});
+}
+
+/* ----------------------------------------------------------------
+   10. PWA — Install banner (beforeinstallprompt)
+---------------------------------------------------------------- */
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const wrap = document.getElementById('install-wrap');
+  if (wrap && localStorage.getItem('install_dismissed') !== '1') {
+    wrap.style.display = 'block';
+  }
+});
+
+document.getElementById('install-btn').addEventListener('click', () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(() => {
+    deferredPrompt = null;
+    document.getElementById('install-wrap').style.display = 'none';
+  });
+});
+
+document.getElementById('dismiss-install').addEventListener('click', () => {
+  document.getElementById('install-wrap').style.display = 'none';
+  localStorage.setItem('install_dismissed', '1');
+});
+
+/* ----------------------------------------------------------------
+   11. INIT
+---------------------------------------------------------------- */
+function init() {
+  renderNav();
+  renderMain();
+  renderStreak();
+  updateNotifBtn();
+
+  // Auto evening check if notifs already granted
+  if (Notification.permission === 'granted') {
+    scheduleEveningCheck();
+  }
+}
+
+// Kick everything off
+init();
+
+</script>
+</body>
+</html>
